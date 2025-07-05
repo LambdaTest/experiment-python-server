@@ -26,10 +26,11 @@ class DirectCohortDownloadApi(CohortDownloadApi):
         self.secret_key = secret_key
         self.max_cohort_size = max_cohort_size
         self.server_url = server_url
+        self.request_path_prefix= ""
         self.logger = logger
         self.__setup_connection_pool()
 
-    def get_cohort(self, cohort_id: str, cohort: Optional[Cohort]) -> Cohort or None:
+    def get_cohort(self, cohort_id: str, cohort: Optional[Cohort]) -> Cohort|None:
         self.logger.debug(f"getCohortMembers({cohort_id}): start")
         errors = 0
         while True:
@@ -72,7 +73,7 @@ class DirectCohortDownloadApi(CohortDownloadApi):
         }
         conn = self._connection_pool.acquire()
         try:
-            url = f'/sdk/v1/cohort/{cohort_id}?maxCohortSize={self.max_cohort_size}'
+            url = f'{self.request_path_prefix}/sdk/v1/cohort/{cohort_id}?maxCohortSize={self.max_cohort_size}'
             if last_modified is not None:
                 url += f'&lastModified={last_modified}'
             response = conn.request('GET', url, headers=headers)
@@ -85,7 +86,8 @@ class DirectCohortDownloadApi(CohortDownloadApi):
         return base64.b64encode(credentials.encode('utf-8')).decode('utf-8')
 
     def __setup_connection_pool(self):
-        scheme, _, host = self.server_url.split('/', 3)
+        scheme, _, host, *rest = self.server_url.split('/', 3)
+        self.request_path_prefix = '/' + rest[0] if rest else ''
         timeout = 10
         self._connection_pool = HTTPConnectionPool(host, max_size=10, idle_timeout=30, read_timeout=timeout,
                                                    scheme=scheme)
