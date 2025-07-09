@@ -32,6 +32,7 @@ class RemoteEvaluationClient:
             raise ValueError("Experiment API key is empty")
         self.api_key = api_key
         self.config = config or RemoteEvaluationConfig()
+        self.request_path_prefix = ""
         self.logger = logging.getLogger("Amplitude")
         self.logger.addHandler(logging.StreamHandler())
         if self.config.debug:
@@ -147,7 +148,7 @@ class RemoteEvaluationClient:
                                 f"cannot be cached by CDN; must be < 8KB")
         self.logger.debug(f"[Experiment] Fetch variants for user: {str(user_context)}")
         try:
-            response = conn.request('POST', '/sdk/v2/vardata?v=0', body, headers)
+            response = conn.request('POST', f'{self.request_path_prefix}/sdk/v2/vardata?v=0', body, headers)
             elapsed = '%.3f' % ((time.time() - start) * 1000)
             self.logger.debug(f"[Experiment] Fetch complete in {elapsed} ms")
             if response.status != 200:
@@ -161,7 +162,8 @@ class RemoteEvaluationClient:
             self._connection_pool.release(conn)
 
     def __setup_connection_pool(self):
-        scheme, _, host = self.config.server_url.split('/', 3)
+        scheme, _, host, *rest = self.config.server_url.split('/', 3)
+        self.request_path_prefix = '/' + rest[0] if rest else ''
         timeout = self.config.fetch_timeout_millis / 1000
         self._connection_pool = HTTPConnectionPool(host, max_size=1, idle_timeout=30,
                                                    read_timeout=timeout, scheme=scheme)

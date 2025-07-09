@@ -20,6 +20,7 @@ class FlagConfigApiV2(FlagConfigApi):
         self.deployment_key = deployment_key
         self.server_url = server_url
         self.flag_config_poller_request_timeout_millis = flag_config_poller_request_timeout_millis
+        self.request_path_prefix = ""
         self.__setup_connection_pool()
 
     def get_flag_configs(self) -> List[EvaluationFlag]:
@@ -34,7 +35,7 @@ class FlagConfigApiV2(FlagConfigApi):
         }
         body = None
         try:
-            response = conn.request('GET', '/sdk/v2/flags?v=0', body, headers)
+            response = conn.request('GET', f'{self.request_path_prefix}/sdk/v2/flags?v=0', body, headers)
             response_body = response.read().decode("utf8")
             if response.status != 200:
                 raise Exception(
@@ -45,7 +46,8 @@ class FlagConfigApiV2(FlagConfigApi):
             self._connection_pool.release(conn)
 
     def __setup_connection_pool(self):
-        scheme, _, host = self.server_url.split('/', 3)
+        scheme, _, host, *rest = self.server_url.split('/', 3)
+        self.request_path_prefix = '/' + rest[0] if rest else ''
         timeout = self.flag_config_poller_request_timeout_millis / 1000
         self._connection_pool = HTTPConnectionPool(host, max_size=1, idle_timeout=30,
                                                    read_timeout=timeout, scheme=scheme)
@@ -63,6 +65,7 @@ class EventSource:
                  keep_alive_timeout_millis: int = DEFAULT_STREAM_API_KEEP_ALIVE_TIMEOUT_MILLIS):
         self.keep_alive_timer: Optional[threading.Timer] = None
         self.server_url = server_url
+        self.request_path_prefix = ""
         self.path = path
         self.headers = headers
         self.conn_timeout_millis = conn_timeout_millis
@@ -147,14 +150,15 @@ class EventSource:
             on_error("[Experiment] Stream flagConfigs - Unexpected exception" + str(e))
 
     def _get_conn(self) -> Tuple[Union[HTTPConnection, HTTPSConnection], HTTPResponse]:
-        scheme, _, host = self.server_url.split('/', 3)
+        scheme, _, host, *rest = self.server_url.split('/', 3)
+        self.request_path_prefix = '/' + rest[0] if rest else ''
         connection = HTTPConnection if scheme == 'http:' else HTTPSConnection
 
         body = None
 
         conn = connection(host, timeout=get_duration_with_jitter(self.max_conn_duration_millis, self.max_jitter_millis) / 1000)
         try:
-            conn.request('GET', self.path, body, self.headers)
+            conn.request('GET', f"{self.request_path_prefix}{self.path}", body, self.headers)
             response = conn.getresponse()
         except Exception as e:
             conn.close()
